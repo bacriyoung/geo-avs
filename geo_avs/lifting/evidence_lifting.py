@@ -5,7 +5,7 @@ from collections import defaultdict
 import torch
 
 from geo_avs.geometry import segment_mean
-from .qfe import qfe_aggregate
+from .qfe import qfe_aggregate, rank_qfe_aggregate
 from .spfe import spfe_aggregate
 
 
@@ -63,3 +63,27 @@ def lift_score_maps(
         variants["qfe_logits"].append(qfe_aggregate(stats["center"], stats["mean"], stats["q75"], stats["max"]))
     return {name: torch.stack(values, dim=-1) for name, values in variants.items()}
 
+
+def lift_score_maps_full(
+    score_maps: torch.Tensor,
+    center_uv: torch.Tensor,
+    center_valid: torch.Tensor,
+    point_uv: torch.Tensor,
+    point_valid: torch.Tensor,
+    point_to_sp: torch.Tensor,
+    num_superpoints: int,
+) -> dict:
+    """Return raw footprint statistics plus fixed-QFE and Rank-QFE scores."""
+
+    raw = {name: [] for name in ("center", "mean", "q75", "max")}
+    for c in range(score_maps.shape[0]):
+        stats = sample_score_stats(
+            score_maps[c], center_uv, center_valid, point_uv, point_valid,
+            point_to_sp, num_superpoints,
+        )
+        for name in raw:
+            raw[name].append(stats[name])
+    out = {name: torch.stack(cols, dim=-1).float() for name, cols in raw.items()}
+    out["fixed_qfe"] = qfe_aggregate(out["center"], out["mean"], out["q75"], out["max"])
+    out["rank_qfe"] = rank_qfe_aggregate(out["center"], out["mean"], out["q75"], out["max"])
+    return out

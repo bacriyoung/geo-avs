@@ -16,6 +16,11 @@ DEFAULT_PROMPT = (
     "Return a comma-separated list only."
 )
 
+CLEAN_AUTOVOC_PROMPT = (
+    "Briefly describe all visible objects and land-cover regions in the UAV image. "
+    "Be concise. Only output object or region names as noun phrases."
+)
+
 
 @dataclass
 class CaptionerConfig:
@@ -67,10 +72,20 @@ class VLMCaptioner:
             return self._caption_qwen(image_path)
         return self._caption_heuristic(image_path)
 
+    def caption_pil(self, image: Image.Image) -> str:
+        image = image.convert("RGB")
+        if self.backend == "qwen":
+            return self._caption_qwen_image(image)
+        arr = np.asarray(image.resize((96, 96)), dtype=np.float32) / 255.0
+        return self._caption_heuristic_array(arr)
+
     def _caption_qwen(self, image_path: Path) -> str:  # pragma: no cover - optional external dependency.
+        image = Image.open(image_path).convert("RGB")
+        return self._caption_qwen_image(image)
+
+    def _caption_qwen_image(self, image: Image.Image) -> str:  # pragma: no cover - optional external dependency.
         import torch
 
-        image = Image.open(image_path).convert("RGB")
         messages = [
             {
                 "role": "user",
@@ -91,6 +106,9 @@ class VLMCaptioner:
     def _caption_heuristic(self, image_path: Path) -> str:
         image = Image.open(image_path).convert("RGB").resize((96, 96))
         arr = np.asarray(image, dtype=np.float32) / 255.0
+        return self._caption_heuristic_array(arr, image_path=image_path)
+
+    def _caption_heuristic_array(self, arr: np.ndarray, image_path: Optional[Path] = None) -> str:
         r, g, b = arr[..., 0], arr[..., 1], arr[..., 2]
         brightness = arr.mean(axis=-1)
         saturation = arr.max(axis=-1) - arr.min(axis=-1)
@@ -101,11 +119,11 @@ class VLMCaptioner:
             tags.append("water")
         if float(((brightness > 0.45) & (saturation < 0.13)).mean()) > 0.16:
             tags.extend(["roof", "parking lot"])
-        if any(token in image_path.name.lower() for token in ["airport", "runway"]):
+        name = image_path.name.lower() if image_path is not None else ""
+        if any(token in name for token in ["airport", "runway"]):
             tags.append("runway")
-        if any(token in image_path.name.lower() for token in ["harbor", "ship"]):
+        if any(token in name for token in ["harbor", "ship"]):
             tags.extend(["harbor", "ship"])
-        if any(token in image_path.name.lower() for token in ["valley", "field", "farm"]):
+        if any(token in name for token in ["valley", "field", "farm"]):
             tags.extend(["terrain", "farmland", "bare ground"])
         return ", ".join(list(dict.fromkeys(tags)))
-

@@ -1,0 +1,31 @@
+name: geo_avs_clean_official_v1
+protocol:
+  split: scene_stratified_interval5_v1
+  selection_uses_gt: false
+  official_labels_only_in_evaluation: true
+autovoc:
+  captioner: Qwen2.5-VL-7B-Instruct
+  prompt: "Briefly describe all visible objects and land-cover regions in the UAV image. Be concise. Only output object or region names as noun phrases."
+  crops: "full+2x2"
+  max_terms: 24
+  use_rslex: false
+evidence:
+  backend: SegEarth-OV3-SAM3
+  prompt_expansion: false
+  confidence_threshold: 0.1
+superpoints:
+  backend: voxel
+  target_superpoints: 1200
+lifting:
+  primary: rank_qfe
+  variants: [center, mean, q75, max, fixed_qfe, rank_qfe, equal_rank]
+  aggregation_weights: equal
+candidate_selection:
+  primary: equal_rank
+  inputs: [rank_qfe, presence_rank, caption_frequency_rank]
+  use_old_uav_prior: false
+evaluation:
+  mappers: [rule, sbert, lave_qwen]
+  mapper_selection: report_all
+  metrics: [official18_miou, macc, oa, vocab_precision, vocab_recall, vocab_f1, top3_candidate_recall, geo_tpss_lite, ambiguity_accuracy, runtime, cache_size, projection_valid_ratio]
+
